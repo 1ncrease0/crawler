@@ -9,7 +9,7 @@ OUTPUT          ?= result.json
 LOG             ?= crawler.log
 CONCURRENCY     ?= 10
 
-.PHONY: build run test
+.PHONY: build run test test-e2e
 
 build:
 	go build -o $(BINARY) $(PKG)
@@ -26,4 +26,7 @@ run:
 
 test:
 	go test -v -race -count=1 ./...
+
+test-e2e:
+	go test -v -race -count=1 ./e2e/
 

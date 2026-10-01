@@ -158,6 +158,30 @@ func TestCrawlContinuesOnError(t *testing.T) {
 	})
 }
 
+func TestCrawlContinuesOnParseError(t *testing.T) {
+	t.Parallel()
+
+	parse := func(_ io.Reader, base *url.URL) (model.Page, error) {
+		switch base.String() {
+		case "http://site/":
+			return model.Page{Title: "Root", Links: []string{"http://site/a", "http://site/b"}}, nil
+		case "http://site/a":
+			return model.Page{}, errors.New("bad html")
+		default:
+			return model.Page{Title: base.String()}, nil
+		}
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	c := crawler.New(fetchFunc(success), parse, log, 3, 2)
+
+	roots := c.Crawl(context.Background(), []string{"http://site/"})
+
+	require.Len(t, roots, 1)
+	assert.Equal(t, "Root", roots[0].Title)
+	require.Len(t, roots[0].Links, 1)
+	assert.Equal(t, "http://site/b", roots[0].Links[0].Resource)
+}
+
 func TestCrawlContextCancel(t *testing.T) {
 	t.Parallel()
 
@@ -198,32 +222,48 @@ func TestCrawlContextCancel(t *testing.T) {
 func TestCrawlLimitsConcurrency(t *testing.T) {
 	t.Parallel()
 
-	var calls, active, maxActive atomic.Int64
-	f := fetchFunc(func(ctx context.Context, u *url.URL) (fetcher.Response, error) {
-		calls.Add(1)
-		cur := active.Add(1)
-		for {
-			max := maxActive.Load()
-			if cur <= max || maxActive.CompareAndSwap(max, cur) {
-				break
-			}
-		}
-		time.Sleep(20 * time.Millisecond)
-		active.Add(-1)
-		return success(ctx, u)
-	})
-	c := newCrawler(t, f, nil, 0, 3)
-
-	seeds := make([]string, 20)
-	for i := range seeds {
-		seeds[i] = fmt.Sprintf("http://site/%d", i)
+	tests := []struct {
+		name    string
+		workers int
+		seeds   int
+		wantMax int
+	}{
+		{name: "below cap", workers: 3, seeds: 20, wantMax: 3},
+		{name: "above cap is clamped", workers: 100, seeds: 30, wantMax: crawler.MaxWorkers},
 	}
 
-	c.Crawl(context.Background(), seeds)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	assert.Equal(t, int64(20), calls.Load())
-	assert.LessOrEqual(t, maxActive.Load(), int64(3))
-	assert.Greater(t, maxActive.Load(), int64(1))
+			var calls, active, maxActive atomic.Int64
+			f := fetchFunc(func(ctx context.Context, u *url.URL) (fetcher.Response, error) {
+				calls.Add(1)
+				cur := active.Add(1)
+				for {
+					max := maxActive.Load()
+					if cur <= max || maxActive.CompareAndSwap(max, cur) {
+						break
+					}
+				}
+				time.Sleep(20 * time.Millisecond)
+				active.Add(-1)
+				return success(ctx, u)
+			})
+			c := newCrawler(t, f, nil, 0, tt.workers)
+
+			seeds := make([]string, tt.seeds)
+			for i := range seeds {
+				seeds[i] = fmt.Sprintf("http://site/%d", i)
+			}
+
+			c.Crawl(context.Background(), seeds)
+
+			assert.Equal(t, int64(tt.seeds), calls.Load())
+			assert.LessOrEqual(t, maxActive.Load(), int64(tt.wantMax))
+			assert.Greater(t, maxActive.Load(), int64(1))
+		})
+	}
 }
 
 func TestCrawlSkipsInvalidSeeds(t *testing.T) {

@@ -14,6 +14,8 @@ import (
 	"github.com/1ncrease0/crawler/internal/model"
 )
 
+const MaxWorkers = 10
+
 type Fetcher interface {
 	Fetch(ctx context.Context, target *url.URL) (fetcher.Response, error)
 }
@@ -31,6 +33,9 @@ type Crawler struct {
 func New(f Fetcher, parse ParseFunc, log *slog.Logger, depth, workers int) *Crawler {
 	if workers < 1 {
 		workers = 1
+	}
+	if workers > MaxWorkers {
+		workers = MaxWorkers
 	}
 	return &Crawler{
 		fetcher: f,

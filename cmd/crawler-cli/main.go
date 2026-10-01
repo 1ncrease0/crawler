@@ -33,7 +33,7 @@ func main() {
 }
 
 func run(cfg *config.Config) error {
-	log, closeLog, err := logger.Setup(cfg.Log, false)
+	log, closeLog, err := logger.Setup(cfg.Log)
 	if err != nil {
 		return err
 	}

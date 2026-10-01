@@ -81,7 +81,7 @@ func ParseArgs(args []string) (*Config, error) {
 	fs.DurationVar(&cfg.RequestTimeout, "request-timeout", cfg.RequestTimeout, "per-request timeout")
 	fs.StringVar(&cfg.Output, "output", cfg.Output, "path to the JSON result file")
 	fs.StringVar(&cfg.Log, "log", cfg.Log, "path to the log file")
-	fs.IntVar(&cfg.Concurrency, "concurrency", cfg.Concurrency, "max number of concurrent requests")
+	fs.IntVar(&cfg.Concurrency, "concurrency", cfg.Concurrency, "max number of concurrent requests (1-10)")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
